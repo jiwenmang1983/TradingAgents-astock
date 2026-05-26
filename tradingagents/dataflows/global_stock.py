@@ -167,12 +167,102 @@ def _us_quote(ticker: str) -> dict:
 # Yahoo Finance K-line
 # ---------------------------------------------------------------------------
 
+def _eastmoney_kline(secid: str, start_date: str, end_date: str) -> pd.DataFrame:
+    """Fetch K-line from Eastmoney push2his API (US/HK fallback)."""
+    # secid format: 116.00700 (HK), 105.BABA (US)
+    url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    params = {
+        "secid": secid,
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56",
+        "klt": "101",  # Daily
+        "fqt": "1",    # Forward-adjusted
+        "beg": start_date.replace("-", ""),
+        "end": end_date.replace("-", ""),
+    }
+    headers = {"User-Agent": _UA, "Referer": "https://finance.eastmoney.com/"}
+    r = requests.get(url, params=params, headers=headers, timeout=15)
+    if r.status_code != 200:
+        return pd.DataFrame()
+    d = r.json()
+    klines = d.get("data", {}).get("klines", [])
+    rows = []
+    for kl in klines:
+        fields = kl.split(",")
+        if len(fields) < 6:
+            continue
+        rows.append({
+            "Date": fields[0],
+            "Open": float(fields[1]) if fields[1] else None,
+            "High": float(fields[2]) if fields[2] else None,
+            "Low": float(fields[3]) if fields[3] else None,
+            "Close": float(fields[4]) if fields[4] else None,
+            "Volume": float(fields[5]) if fields[5] else 0,
+        })
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df["Date"] = pd.to_datetime(df["Date"])
+    return df.set_index("Date").dropna(subset=["Close"])
+
+
+def _tencent_kline(tencent_code: str, num: int = 60) -> pd.DataFrame:
+    """Fetch HK K-line from Tencent (fallback when Yahoo is rate-limited)."""
+    url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+    params = {"_var": "kline_dayhfq", "param": f"hk{tencent_code},day,,,{num},qfq"}
+    headers = {"User-Agent": _UA}
+    r = requests.get(url, params=params, headers=headers, timeout=15)
+    r.raise_for_status()
+    text = r.text
+    m = re.search(r"=(.+)$", text)
+    if not m:
+        return pd.DataFrame()
+    d = json.loads(m.group(1))
+    days = d.get("data", {}).get(f"hk{tencent_code}", {}).get("day", [])
+    rows = []
+    for day in days:
+        if len(day) < 6:
+            continue
+        rows.append({
+            "Date": day[0],
+            "Open": float(day[1]) if day[1] else None,
+            "High": float(day[2]) if day[2] else None,
+            "Low": float(day[3]) if day[3] else None,
+            "Close": float(day[4]) if day[4] else None,
+            "Volume": float(day[5]) if day[5] else 0,
+        })
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df["Date"] = pd.to_datetime(df["Date"])
+    return df.set_index("Date").dropna(subset=["Close"])
+
+
+def _fetch_with_retry(url: str, params: dict, headers: dict, max_retries: int = 3) -> requests.Response:
+    """Fetch URL with retry on rate limit (429)."""
+    for attempt in range(max_retries):
+        r = requests.get(url, params=params, headers=headers, timeout=15)
+        if r.status_code != 429:
+            return r
+        wait = 2 ** attempt
+        print(f"Yahoo Finance rate limited, retrying in {wait}s (attempt {attempt+1}/{max_retries})")
+        import time; time.sleep(wait)
+    return requests.get(url, params=params, headers=headers, timeout=15)
+
+
 def _yahoo_kline(symbol: str, range_: str = "6mo") -> pd.DataFrame:
-    """Fetch OHLCV from Yahoo Finance chart API."""
+    """Fetch OHLCV from Yahoo Finance chart API (falls back to Tencent for HK)."""
     url = f"https://query2.finance.yahoo.com/v8/finance/chart/{symbol}"
     params = {"interval": "1d", "range": range_}
     headers = {"User-Agent": _UA}
-    r = requests.get(url, params=params, headers=headers, timeout=15)
+    r = _fetch_with_retry(url, params, headers)
+    if r.status_code in (429, 403):
+        # Fallback to Tencent for HK stocks (Tencent has 2+ years history)
+        m = re.match(r"(\d+)\.HK", symbol, re.IGNORECASE)
+        if m:
+            tencent_code = m.group(1).zfill(5)
+            return _tencent_kline(tencent_code, num=500)
+        r.raise_for_status()
     r.raise_for_status()
     d = r.json()
     chart = d.get("chart", {}).get("result", [{}])[0]
@@ -204,7 +294,7 @@ def _yahoo_us_kline(ticker: str, range_: str = "2y") -> pd.DataFrame:
     url = f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}"
     params = {"interval": "1d", "range": range_}
     headers = {"User-Agent": _UA}
-    r = requests.get(url, params=params, headers=headers, timeout=15)
+    r = _fetch_with_retry(url, params, headers)
     r.raise_for_status()
     d = r.json()
     chart = d.get("chart", {}).get("result", [{}])[0]

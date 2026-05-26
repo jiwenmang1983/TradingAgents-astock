@@ -38,11 +38,11 @@ DEFAULT_CONFIG = {
     # Data vendor configuration
     # Category-level configuration (default for all tools in category)
     "data_vendors": {
-        "core_stock_apis": "a_stock",        # Options: a_stock, alpha_vantage, yfinance
-        "technical_indicators": "a_stock",   # Options: a_stock, alpha_vantage, yfinance
-        "fundamental_data": "a_stock",       # Options: a_stock, alpha_vantage, yfinance
-        "news_data": "a_stock",              # Options: a_stock, alpha_vantage, yfinance
-        "signal_data": "a_stock",            # A-stock only: topic attribution, capital flow, consensus
+        "core_stock_apis": "a_stock,global_stock",   # Options: a_stock, alpha_vantage, yfinance, global_stock
+        "technical_indicators": "a_stock,global_stock",  # Options: a_stock, alpha_vantage, yfinance, global_stock
+        "fundamental_data": "a_stock,global_stock",  # Options: a_stock, alpha_vantage, yfinance, global_stock
+        "news_data": "a_stock,global_stock",         # Options: a_stock, alpha_vantage, yfinance, global_stock
+        "signal_data": "a_stock",                   # A-stock only: topic attribution, capital flow, consensus
     },
     # Tool-level configuration (takes precedence over category-level)
     "tool_vendors": {

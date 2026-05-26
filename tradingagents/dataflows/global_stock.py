@@ -53,18 +53,26 @@ def _detect_market(symbol: str) -> Literal["hk", "us", "astock"]:
     return "astock"
 
 
-def _normalize_symbol(symbol: str) -> tuple[str, str]:
-    """Normalize symbol to (normalized_code, market)."""
+def _normalize_symbol(symbol: str) -> tuple[str, str, str]:
+    """Normalize symbol to (yahoo_code, tencent_code, market).
+
+    Yahoo Finance HK uses 4-digit codes (0700.HK).
+    Tencent qt.gtimg.cn HK uses 5-digit codes (00700).
+    US uses ticker symbol (AAPL).
+    A-stock uses 6-digit code (600000).
+    """
     s = symbol.strip()
     market = _detect_market(s)
 
     if market == "hk":
-        code = s.split(".")[0].strip()
-        code = code.zfill(5)
-        return code, "hk"
+        raw = s.split(".")[0].strip()
+        int_val = int(raw)  # removes leading zeros
+        tencent_code = str(int_val).zfill(5)
+        yahoo_code = str(int_val).zfill(4)
+        return yahoo_code, tencent_code, "hk"
 
     if market == "us":
-        return s.upper(), "us"
+        return s.upper(), s.upper(), "us"
 
     # astock — strip .SS/.SZ
     for suffix in (".SS", ".SZ", ".BJ"):
@@ -75,7 +83,7 @@ def _normalize_symbol(symbol: str) -> tuple[str, str]:
         if s.upper().startswith(prefix):
             s = s[len(prefix):]
             break
-    return s.strip(), "astock"
+    return s.strip(), s.strip(), "astock"
 
 
 # ---------------------------------------------------------------------------
@@ -183,37 +191,47 @@ def _yahoo_kline(symbol: str, range_: str = "6mo") -> pd.DataFrame:
         })
     df = pd.DataFrame(rows)
     df["Date"] = pd.to_datetime(df["Date"])
+    df = df.set_index("Date")
     return df.dropna(subset=["Close"])
 
 
 # ---------------------------------------------------------------------------
-# Sina US K-line
+# Yahoo US K-line
 # ---------------------------------------------------------------------------
 
-def _sina_us_kline(ticker: str, num: int = 120) -> pd.DataFrame:
-    """Fetch US daily K-line from Sina Finance (back to 1984)."""
-    url = (
-        "https://stock.finance.sina.com.cn/usstock/api/jsonp.php/"
-        "var US_MinKService.getDailyK"
-    )
-    params = {"symbol": ticker.upper(), "num": num}
-    headers = {"Referer": "https://finance.sina.com.cn/"}
+def _yahoo_us_kline(ticker: str, range_: str = "2y") -> pd.DataFrame:
+    """Fetch US daily K-line from Yahoo Finance."""
+    url = f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}"
+    params = {"interval": "1d", "range": range_}
+    headers = {"User-Agent": _UA}
     r = requests.get(url, params=params, headers=headers, timeout=15)
-    m = re.search(r"\((.+)\)", r.text, re.DOTALL)
-    if not m:
-        return pd.DataFrame()
-    items = json.loads(m.group(1))
-    rows = [{
-        "Date": it["d"],
-        "Open": float(it["o"]),
-        "High": float(it["h"]),
-        "Low": float(it["l"]),
-        "Close": float(it["c"]),
-        "Volume": int(it["v"]),
-    } for it in items]
+    r.raise_for_status()
+    d = r.json()
+    chart = d.get("chart", {}).get("result", [{}])[0]
+    timestamps = chart.get("timestamp", [])
+    quote = chart.get("indicators", {}).get("quote", [{}])[0]
+
+    rows = []
+    for i, ts in enumerate(timestamps):
+        rows.append({
+            "Date": datetime.fromtimestamp(ts).strftime("%Y-%m-%d"),
+            "Open": round(quote["open"][i], 2) if quote["open"][i] else None,
+            "High": round(quote["high"][i], 2) if quote["high"][i] else None,
+            "Low": round(quote["low"][i], 2) if quote["low"][i] else None,
+            "Close": round(quote["close"][i], 2) if quote["close"][i] else None,
+            "Volume": int(quote["volume"][i]) if quote["volume"][i] else 0,
+        })
     df = pd.DataFrame(rows)
     df["Date"] = pd.to_datetime(df["Date"])
-    return df
+    df = df.set_index("Date")
+    return df.dropna(subset=["Close"])
+
+
+def _sina_us_kline(ticker: str, num: int = 120) -> pd.DataFrame:
+    """Fetch US daily K-line — Yahoo Finance (Sina endpoint deprecated)."""
+    # Sina's US K-line endpoint is no longer functional.
+    # Use Yahoo Finance instead for both HK and US.
+    return _yahoo_us_kline(ticker.upper(), "2y")
 
 
 # ---------------------------------------------------------------------------
@@ -380,22 +398,21 @@ def get_stock_data(
     end_date: Annotated[str, "End date in yyyy-mm-dd format"],
 ) -> str:
     """Get OHLCV stock price data for HK or US stocks."""
-    norm, market = _normalize_symbol(symbol)
+    yahoo_code, tencent_code, market = _normalize_symbol(symbol)
     start_dt = pd.to_datetime(start_date)
     end_dt = pd.to_datetime(end_date)
 
     if market == "hk":
-        yahoo_sym = f"{int(norm)}.HK"
-        df = _yahoo_kline(yahoo_sym, "2y")
+        df = _yahoo_kline(f"{yahoo_code}.HK", "2y")
         data_source = "Yahoo Finance"
     else:
-        df = _sina_us_kline(norm, 800)
-        data_source = "Sina Finance"
+        df = _yahoo_us_kline(yahoo_code, "2y")
+        data_source = "Yahoo Finance"
 
     if df.empty:
         return f"No data found for '{symbol}' between {start_date} and {end_date}"
 
-    df = df[(df["Date"] >= start_dt) & (df["Date"] <= end_dt)]
+    df = df[(df.index >= start_dt) & (df.index <= end_dt)]
     if df.empty:
         return f"No data found for '{symbol}' between {start_date} and {end_date}"
 
@@ -403,6 +420,7 @@ def get_stock_data(
         if col in df.columns:
             df[col] = df[col].round(2)
 
+    df = df.reset_index()
     df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
     csv_out = df[["Date", "Open", "High", "Low", "Close", "Volume"]].to_csv(index=False)
 
@@ -421,20 +439,20 @@ def get_indicators(
     look_back_days: Annotated[int, "Days to look back"],
 ) -> str:
     """Get technical indicators for HK/US stocks."""
-    norm, market = _normalize_symbol(symbol)
+    yahoo_code, tencent_code, market = _normalize_symbol(symbol)
 
     if indicator not in _SUPPORTED_INDICATORS:
         return f"Indicator {indicator} not supported. Choose from: {_SUPPORTED_INDICATORS}"
 
     if market == "hk":
-        df = _yahoo_kline(f"{int(norm)}.HK", "1y")
+        df = _yahoo_kline(f"{yahoo_code}.HK", "1y")
     else:
-        df = _sina_us_kline(norm, 250)
+        df = _yahoo_us_kline(yahoo_code, "1y")
 
     if df.empty:
         return f"No K-line data to calculate indicators for {symbol}"
 
-    ind = _calc_indicators(df, norm)
+    ind = _calc_indicators(df, yahoo_code)
 
     # Map indicator name to result key
     if indicator in ("close_50_sma", "close_200_sma", "close_10_ema"):
@@ -500,11 +518,11 @@ def get_fundamentals(
     curr_date: Annotated[str, "current date (unused)"] = None,
 ) -> str:
     """Get real-time quote + key metrics for HK/US stocks."""
-    norm, market = _normalize_symbol(ticker)
+    yahoo_code, tencent_code, market = _normalize_symbol(ticker)
     lines = []
 
     if market == "hk":
-        q = _hk_quote(norm)
+        q = _hk_quote(tencent_code)
         if q:
             lines.extend([
                 f"Name: {q['name']}",
@@ -515,7 +533,7 @@ def get_fundamentals(
                 f"Market Cap (HKD): {q['market_cap']}",
             ])
     else:
-        q = _us_quote(norm)
+        q = _us_quote(yahoo_code)
         if q:
             lines.extend([
                 f"Name: {q['name']}",
@@ -540,7 +558,7 @@ def get_balance_sheet(
     curr_date: Annotated[str, "current date YYYY-MM-DD"] = None,
 ) -> str:
     """Get balance sheet via Eastmoney datacenter."""
-    norm, market = _normalize_symbol(ticker)
+    yahoo_code, tencent_code, market = _normalize_symbol(ticker)
     is_hk = market == "hk"
     report_map = {
         "balance":   {"us": "RPT_USF10_FN_BALANCE",   "hk": "RPT_HKF10_FN_BALANCE"},
@@ -551,7 +569,8 @@ def get_balance_sheet(
     if not report_name:
         return f"No balance sheet for market {market}"
 
-    secucode = norm if is_hk else norm
+    # Eastmoney secucode: HK uses yahoo_code.HK format (e.g. 0700.HK)
+    secucode = f"{yahoo_code}.HK" if is_hk else yahoo_code
     rows = _em_datacenter(report_name, filter_str=f'(SECUCODE="{secucode}")', page_size=200)
 
     if not rows:
@@ -571,7 +590,7 @@ def get_cashflow(
     curr_date: Annotated[str, "current date YYYY-MM-DD"] = None,
 ) -> str:
     """Get cash flow statement via Eastmoney datacenter."""
-    norm, market = _normalize_symbol(ticker)
+    yahoo_code, tencent_code, market = _normalize_symbol(ticker)
     is_hk = market == "hk"
     report_map = {
         "balance":   {"us": "RPT_USF10_FN_BALANCE",   "hk": "RPT_HKF10_FN_BALANCE"},
@@ -582,7 +601,7 @@ def get_cashflow(
     if not report_name:
         return f"No cash flow for market {market}"
 
-    secucode = norm if is_hk else norm
+    secucode = f"{yahoo_code}.HK" if is_hk else yahoo_code
     rows = _em_datacenter(report_name, filter_str=f'(SECUCODE="{secucode}")', page_size=200)
 
     if not rows:
@@ -602,7 +621,7 @@ def get_income_statement(
     curr_date: Annotated[str, "current date YYYY-MM-DD"] = None,
 ) -> str:
     """Get income statement via Eastmoney datacenter."""
-    norm, market = _normalize_symbol(ticker)
+    yahoo_code, tencent_code, market = _normalize_symbol(ticker)
     is_hk = market == "hk"
     report_map = {
         "balance":   {"us": "RPT_USF10_FN_BALANCE",   "hk": "RPT_HKF10_FN_BALANCE"},
@@ -613,7 +632,7 @@ def get_income_statement(
     if not report_name:
         return f"No income statement for market {market}"
 
-    secucode = norm if is_hk else norm
+    secucode = f"{yahoo_code}.HK" if is_hk else yahoo_code
     rows = _em_datacenter(report_name, filter_str=f'(SECUCODE="{secucode}")', page_size=200)
 
     if not rows:
@@ -633,8 +652,8 @@ def get_news(
     end_date: Annotated[str, "End date yyyy-mm-dd"],
 ) -> str:
     """Get stock news via Yahoo Finance search."""
-    norm, market = _normalize_symbol(ticker)
-    symbol = norm if market == "us" else f"{norm}.HK"
+    yahoo_code, tencent_code, market = _normalize_symbol(ticker)
+    symbol = yahoo_code if market == "us" else f"{yahoo_code}.HK"
 
     try:
         s = requests.Session()

@@ -25,17 +25,17 @@ def test_detect_astock():
 
 
 def test_normalize_hk():
-    assert _normalize_symbol("02727.HK") == ("02727", "hk")
-    assert _normalize_symbol("07000") == ("07000", "hk")
-    assert _normalize_symbol("00700") == ("00700", "hk")
+    assert _normalize_symbol("02727.HK") == ("2727", "02727", "hk")
+    assert _normalize_symbol("07000") == ("7000", "07000", "hk")
+    assert _normalize_symbol("00700") == ("0700", "00700", "hk")
 
 
 def test_normalize_us():
-    assert _normalize_symbol("AAPL") == ("AAPL", "us")
-    assert _normalize_symbol("AAPL.O") == ("AAPL.O", "us")
-    assert _normalize_symbol("BABA.N") == ("BABA.N", "us")
+    assert _normalize_symbol("AAPL") == ("AAPL", "AAPL", "us")
+    assert _normalize_symbol("AAPL.O") == ("AAPL.O", "AAPL.O", "us")
+    assert _normalize_symbol("BABA.N") == ("BABA.N", "BABA.N", "us")
 
 
 def test_normalize_astock():
-    assert _normalize_symbol("600000") == ("600000", "astock")
-    assert _normalize_symbol("000001.SZ") == ("000001", "astock")
+    assert _normalize_symbol("600000") == ("600000", "600000", "astock")
+    assert _normalize_symbol("000001.SZ") == ("000001", "000001", "astock")

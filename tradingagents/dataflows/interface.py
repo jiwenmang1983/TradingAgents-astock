@@ -43,6 +43,16 @@ from .a_stock import (
     get_lockup_expiry as get_astock_lockup_expiry,
     get_industry_comparison as get_astock_industry_comparison,
 )
+from .global_stock import (
+    get_stock_data as get_global_stock_stock_data,
+    get_indicators as get_global_stock_indicators,
+    get_fundamentals as get_global_stock_fundamentals,
+    get_balance_sheet as get_global_stock_balance_sheet,
+    get_cashflow as get_global_stock_cashflow,
+    get_income_statement as get_global_stock_income_statement,
+    get_news as get_global_stock_news,
+    get_global_news as get_global_stock_global_news,
+)
 
 # Configuration and routing logic
 from .config import get_config
@@ -97,6 +107,7 @@ VENDOR_LIST = [
     "a_stock",
     "yfinance",
     "alpha_vantage",
+    "global_stock",
 ]
 
 # Mapping of methods to their vendor-specific implementations
@@ -104,44 +115,52 @@ VENDOR_METHODS = {
     # core_stock_apis
     "get_stock_data": {
         "a_stock": get_astock_stock_data,
+        "global_stock": get_global_stock_stock_data,
         "alpha_vantage": get_alpha_vantage_stock,
         "yfinance": get_YFin_data_online,
     },
     # technical_indicators
     "get_indicators": {
         "a_stock": get_astock_indicators,
+        "global_stock": get_global_stock_indicators,
         "alpha_vantage": get_alpha_vantage_indicator,
         "yfinance": get_stock_stats_indicators_window,
     },
     # fundamental_data
     "get_fundamentals": {
         "a_stock": get_astock_fundamentals,
+        "global_stock": get_global_stock_fundamentals,
         "alpha_vantage": get_alpha_vantage_fundamentals,
         "yfinance": get_yfinance_fundamentals,
     },
     "get_balance_sheet": {
         "a_stock": get_astock_balance_sheet,
+        "global_stock": get_global_stock_balance_sheet,
         "alpha_vantage": get_alpha_vantage_balance_sheet,
         "yfinance": get_yfinance_balance_sheet,
     },
     "get_cashflow": {
         "a_stock": get_astock_cashflow,
+        "global_stock": get_global_stock_cashflow,
         "alpha_vantage": get_alpha_vantage_cashflow,
         "yfinance": get_yfinance_cashflow,
     },
     "get_income_statement": {
         "a_stock": get_astock_income_statement,
+        "global_stock": get_global_stock_income_statement,
         "alpha_vantage": get_alpha_vantage_income_statement,
         "yfinance": get_yfinance_income_statement,
     },
     # news_data
     "get_news": {
         "a_stock": get_astock_news,
+        "global_stock": get_global_stock_news,
         "alpha_vantage": get_alpha_vantage_news,
         "yfinance": get_news_yfinance,
     },
     "get_global_news": {
         "a_stock": get_astock_global_news,
+        "global_stock": get_global_stock_global_news,
         "yfinance": get_global_news_yfinance,
         "alpha_vantage": get_alpha_vantage_global_news,
     },

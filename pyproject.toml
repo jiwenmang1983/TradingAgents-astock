@@ -12,12 +12,6 @@ license = {text = "Apache-2.0"}
 authors = [
     {name = "simonlin1212", email = "simonlin1212@users.noreply.github.com"},
 ]
-
-[project.urls]
-Homepage = "https://github.com/simonlin1212/tradingagents-astock"
-Repository = "https://github.com/simonlin1212/tradingagents-astock"
-Issues = "https://github.com/simonlin1212/tradingagents-astock/issues"
-Upstream = "https://github.com/TauricResearch/TradingAgents"
 dependencies = [
     "langchain-core>=0.3.81",
     "backtrader>=1.9.78.123",
@@ -41,6 +35,7 @@ dependencies = [
     "yfinance>=0.2.63",
     "streamlit>=1.45.0",
     "fpdf2>=2.8.0",
+    "reportlab>=4.0.0",
     "python-dotenv>=1.1.0",
     "mootdx>=0.10.0",
 ]
@@ -51,6 +46,11 @@ google = ["langchain-google-genai>=4.0.0"]
 [project.scripts]
 tradingagents = "cli.main:app"
 tradingagents-web = "web.launch:main"
+
+[project.urls]
+Homepage = "https://github.com/simonlin1212/tradingagents-astock"
+Repository = "https://github.com/simonlin1212/tradingagents-astock"
+Issues = "https://github.com/simonlin1212/tradingagents-astock/issues"
 
 [tool.setuptools.packages.find]
 include = ["tradingagents*", "cli*", "web*"]

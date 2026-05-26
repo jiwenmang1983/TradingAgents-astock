@@ -111,4 +111,4 @@ def render_progress(tracker: ProgressTracker) -> None:
         for name, icon, report in reversed(completed_reports):
             is_latest = (name == completed_reports[-1][0])
             with st.expander(f"{icon} {name}", expanded=is_latest):
-                st.markdown(report[:3000])
+                st.markdown(report[:10000])

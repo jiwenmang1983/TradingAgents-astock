@@ -135,7 +135,7 @@ def _build_config() -> dict:
     config = DEFAULT_CONFIG.copy()
     config["llm_provider"] = st.session_state.get("llm_provider", "minimax")
     config["deep_think_llm"] = st.session_state.get("deep_think_llm", "MiniMax-M2.7")
-    config["quick_think_llm"] = st.session_state.get("quick_think_llm", "MiniMax-M2.7-highspeed")
+    config["quick_think_llm"] = st.session_state.get("quick_think_llm", "MiniMax-M2.7")
     config["data_vendors"] = {
         "core_stock_apis": "a_stock",
         "technical_indicators": "a_stock",
@@ -146,6 +146,12 @@ def _build_config() -> dict:
     config["max_debate_rounds"] = 1
     config["max_risk_discuss_rounds"] = 1
     config["output_language"] = "Chinese"
+    # 修复权限问题：使用 /tmp 目录
+    import os
+    os.makedirs("/tmp/tradingagents_cache", exist_ok=True)
+    config["data_cache_dir"] = "/tmp/tradingagents_cache"
+    config["results_dir"] = "/tmp/tradingagents_results"
+    config["memory_log_path"] = "/tmp/tradingagents_memory.json"
     return config
 
 

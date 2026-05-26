@@ -250,7 +250,12 @@ def route_to_vendor(method: str, *args, **kwargs):
 
         # If result looks like an error message from a_stock (mootdx/sina failure),
         # continue to next vendor
-        if isinstance(result, str) and ("获取失败" in result or "失败" in result or "No data" in result or "Error" in result):
+        if isinstance(result, str) and (
+            "获取失败" in result
+            or "失败" in result
+            or "No fundamentals" in result
+            or "No data" in result
+        ):
             continue
 
         return result

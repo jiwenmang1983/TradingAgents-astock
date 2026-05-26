@@ -242,8 +242,17 @@ def route_to_vendor(method: str, *args, **kwargs):
         impl_func = vendor_impl[0] if isinstance(vendor_impl, list) else vendor_impl
 
         try:
-            return impl_func(*args, **kwargs)
+            result = impl_func(*args, **kwargs)
         except AlphaVantageRateLimitError:
             continue  # Only rate limits trigger fallback
+        except Exception:
+            continue  # Fall through to next vendor on any error
+
+        # If result looks like an error message from a_stock (mootdx/sina failure),
+        # continue to next vendor
+        if isinstance(result, str) and ("获取失败" in result or "失败" in result or "No data" in result or "Error" in result):
+            continue
+
+        return result
 
     raise RuntimeError(f"No available vendor for '{method}'")

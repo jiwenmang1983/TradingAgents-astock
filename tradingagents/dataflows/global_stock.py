@@ -318,10 +318,36 @@ def _yahoo_us_kline(ticker: str, range_: str = "2y") -> pd.DataFrame:
 
 
 def _sina_us_kline(ticker: str, num: int = 120) -> pd.DataFrame:
-    """Fetch US daily K-line — Yahoo Finance (Sina endpoint deprecated)."""
-    # Sina's US K-line endpoint is no longer functional.
-    # Use Yahoo Finance instead for both HK and US.
-    return _yahoo_us_kline(ticker.upper(), "2y")
+    """Fetch US daily K-line from Sina (returns data back to 1984)."""
+    url = "https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var/US_MinKService.getDailyK"
+    params = {"symbol": ticker.upper(), "num": num}
+    headers = {"Referer": "https://finance.sina.com.cn/", "User-Agent": _UA}
+    r = requests.get(url, params=params, headers=headers, timeout=15)
+    if r.status_code != 200:
+        return pd.DataFrame()
+    # Response: var([{"d":"1984-09-07","o":"26.50",...}])
+    m = re.search(r"\((.+)\)", r.text, re.DOTALL)
+    if not m:
+        return pd.DataFrame()
+    try:
+        items = json.loads(m.group(1))
+    except json.JSONDecodeError:
+        return pd.DataFrame()
+    rows = []
+    for it in items:
+        rows.append({
+            "Date": it.get("d"),
+            "Open": float(it["o"]) if it.get("o") else None,
+            "High": float(it["h"]) if it.get("h") else None,
+            "Low": float(it["l"]) if it.get("l") else None,
+            "Close": float(it["c"]) if it.get("c") else None,
+            "Volume": int(it["v"]) if it.get("v") else 0,
+        })
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df["Date"] = pd.to_datetime(df["Date"])
+    return df.set_index("Date").dropna(subset=["Close"])
 
 
 # ---------------------------------------------------------------------------
@@ -496,8 +522,8 @@ def get_stock_data(
         df = _yahoo_kline(f"{yahoo_code}.HK", "2y")
         data_source = "Yahoo Finance"
     else:
-        df = _yahoo_us_kline(yahoo_code, "2y")
-        data_source = "Yahoo Finance"
+        df = _sina_us_kline(yahoo_code, 500)
+        data_source = "Sina Finance"
 
     if df.empty:
         return f"No data found for '{symbol}' between {start_date} and {end_date}"
